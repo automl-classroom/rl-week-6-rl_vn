@@ -19,6 +19,8 @@ from rl_exercises.week_6.networks import (  # adjust import path as needed
     ValueNetwork,
 )
 from torch.distributions import Categorical
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 def set_seed(env: gym.Env, seed: int = 0) -> None:
@@ -178,7 +180,6 @@ class ActorCriticAgent(AbstractAgent):
         # return normalized advantages and returns
         return advantages, returns
 
-    
     def compute_gae(
         self,
         states: List[np.ndarray],
@@ -365,6 +366,9 @@ class ActorCriticAgent(AbstractAgent):
         """
         eval_env = gym.make(self.env.spec.id)
         step_count = 0
+        # Lists to store evaluation data for plotting
+        eval_steps = []
+        eval_returns = []
 
         while step_count < total_steps:
             state, _ = self.env.reset()
@@ -383,6 +387,9 @@ class ActorCriticAgent(AbstractAgent):
 
                 if step_count % eval_interval == 0:
                     mean_r, std_r = self.evaluate(eval_env, num_episodes=eval_episodes)
+                    # Store evaluation data
+                    eval_steps.append(step_count)
+                    eval_returns.append(mean_r)
                     print(
                         f"[Eval ] Step {step_count:6d} AvgReturn {mean_r:5.1f} ± {std_r:4.1f}"
                     )
@@ -394,13 +401,15 @@ class ActorCriticAgent(AbstractAgent):
             )
 
         print("Training complete.")
+        return eval_steps, eval_returns
 
 
 @hydra.main(
     config_path="../configs/agent/", config_name="actor-critic", version_base="1.1"
 )
 def main(cfg: DictConfig) -> None:
-    env = gym.make(cfg.env.name)
+    env_id = cfg.env.name.replace("‑", "-")
+    env = gym.make(env_id)
     set_seed(env, cfg.seed)
     agent = ActorCriticAgent(
         env,
@@ -413,12 +422,53 @@ def main(cfg: DictConfig) -> None:
         baseline_type=cfg.agent.baseline_type,
         baseline_decay=cfg.agent.get("baseline_decay", 0.9),
     )
-    agent.train(
+    # Train and collect evaluation data
+    eval_steps, eval_returns = agent.train(
         cfg.train.total_steps,
         cfg.train.eval_interval,
         cfg.train.eval_episodes,
     )
 
+    # Create environment with rgb_array mode for recording
+    eval_env = gym.make(env_id, render_mode="rgb_array")
+    state, _ = eval_env.reset()
+    done = False
+
+    # Store frames for GIF creation
+    frames = []
+
+    while not done:
+        frame = eval_env.render()
+        frames.append(frame)
+        action, _ = agent.predict_action(state, evaluate=True)
+        state, _, term, trunc, _ = eval_env.step(action)
+        done = term or trunc
+
+    eval_env.close()
+
+    # Save as GIF
+    import imageio
+
+    output_dir = Path("outputs")
+    output_dir.mkdir(exist_ok=True)
+
+    gif_path = output_dir / "lunar_lander_gameplay.gif"
+    imageio.mimsave(gif_path, frames, fps=30)
+    print(f"GIF saved to: {gif_path}")
+
+    # Plot average return vs. steps using Matplotlib
+    plt.figure(figsize=(10, 6))
+    plt.plot(eval_steps, eval_returns, label=f"Actor-Critic ({cfg.agent.baseline_type} baseline)")
+    plt.xlabel("Steps")
+    plt.ylabel("Average Return")
+    plt.title(f"Average Return vs. Steps: Actor-Critic with {cfg.agent.baseline_type.capitalize()} Baseline")
+    plt.grid(True)
+    plt.legend()
+    # Save the plot as PNG
+    plot_path = output_dir / "average_return_vs_steps.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"Plot saved to: {plot_path}")
 
 if __name__ == "__main__":
     main()
