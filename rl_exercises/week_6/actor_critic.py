@@ -6,8 +6,11 @@ Adds GAE for low-variance advantage estimation.
 
 from typing import Any, List, Tuple
 
+from pathlib import Path
+
 import gymnasium as gym
 import hydra
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -19,8 +22,6 @@ from rl_exercises.week_6.networks import (  # adjust import path as needed
     ValueNetwork,
 )
 from torch.distributions import Categorical
-import matplotlib.pyplot as plt
-from pathlib import Path
 
 
 def set_seed(env: gym.Env, seed: int = 0) -> None:
@@ -175,7 +176,9 @@ class ActorCriticAgent(AbstractAgent):
         advantages = returns - values
 
         # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
-        advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-8)
+        advantages = (advantages - advantages.mean()) / (
+            advantages.std(unbiased=False) + 1e-8
+        )
 
         # return normalized advantages and returns
         return advantages, returns
@@ -211,13 +214,18 @@ class ActorCriticAgent(AbstractAgent):
 
         # TODO: compute values and next_values using your value_fn
         states_tensor = torch.stack([torch.from_numpy(s).float() for s in states])
-        next_states_tensor = torch.stack([torch.from_numpy(s).float() for s in next_states])
+        next_states_tensor = torch.stack(
+            [torch.from_numpy(s).float() for s in next_states]
+        )
         values = self.value_fn(states_tensor).detach()
         next_values = self.value_fn(next_states_tensor).detach()
 
         # TODO: compute deltas: one-step TD errors
-        deltas = torch.tensor(rewards, dtype=torch.float32) + \
-                 self.gamma * next_values * (1 - torch.tensor(dones, dtype=torch.float32)) - values
+        deltas = (
+            torch.tensor(rewards, dtype=torch.float32)
+            + self.gamma * next_values * (1 - torch.tensor(dones, dtype=torch.float32))
+            - values
+        )
 
         # TODO: accumulate GAE advantages backwards
         advantages = torch.zeros_like(deltas)
@@ -230,7 +238,9 @@ class ActorCriticAgent(AbstractAgent):
         returns = advantages + values
 
         # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
-        advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-8)
+        advantages = (advantages - advantages.mean()) / (
+            advantages.std(unbiased=False) + 1e-8
+        )
 
         # TODO: advantages, returns  # replace with actual values (detach both to avoid re-entering the graph)
         return advantages, returns
@@ -458,10 +468,16 @@ def main(cfg: DictConfig) -> None:
 
     # Plot average return vs. steps using Matplotlib
     plt.figure(figsize=(10, 6))
-    plt.plot(eval_steps, eval_returns, label=f"Actor-Critic ({cfg.agent.baseline_type} baseline)")
+    plt.plot(
+        eval_steps,
+        eval_returns,
+        label=f"Actor-Critic ({cfg.agent.baseline_type} baseline)",
+    )
     plt.xlabel("Steps")
     plt.ylabel("Average Return")
-    plt.title(f"Average Return vs. Steps: Actor-Critic with {cfg.agent.baseline_type.capitalize()} Baseline")
+    plt.title(
+        f"Average Return vs. Steps: Actor-Critic with {cfg.agent.baseline_type.capitalize()} Baseline"
+    )
     plt.grid(True)
     plt.legend()
     # Save the plot as PNG
@@ -469,6 +485,7 @@ def main(cfg: DictConfig) -> None:
     plt.savefig(plot_path)
     plt.close()
     print(f"Plot saved to: {plot_path}")
+
 
 if __name__ == "__main__":
     main()
